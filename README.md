@@ -112,6 +112,119 @@ Dataset used is from Kaggle . Here is the location: https://www.kaggle.com/datas
 - **Mixed Precision Training**: If you have a compatible NVIDIA GPU, you can enable mixed precision training with the `use_amp` flag for faster training with reduced memory usage.
 - **DataParallel**: The model supports multi-GPU training using `torch.nn.DataParallel` if more than one GPU is detected.
 
+
+## Execution Sequence
+
+1. **Initialization of the Pipeline:**
+   - The process begins by initializing an instance of the `SQLInjectionPipeline` class. The constructor (`__init__`) method loads the model and any pre-configured settings from the `config` dictionary.
+   
+   ```python
+   pipeline = SQLInjectionPipeline(config)
+   ```
+
+2. **Data Loading:**
+   - The `setup_and_train()` method starts by loading the dataset from a CSV file specified in the config (`data_file`). The `load_data()` method reads the CSV, extracts SQL queries and their labels, and then tokenizes them using the Hugging Face tokenizer for MobileBERT.
+   
+   ```python
+   train_data, eval_data = pipeline.load_data()
+   ```
+
+3. **Data Preprocessing and Tokenization:**
+   - Tokenization converts each SQL query into input IDs and attention masks. It uses dynamic padding to ensure that batches are padded to the maximum sequence length in the batch, rather than the entire dataset, improving efficiency.
+
+4. **Model Initialization:**
+   - If there’s a fine-tuned model specified in the configuration (`ft_model`), it loads the weights from the saved model. Otherwise, it loads the pre-trained MobileBERT model from Hugging Face (`google/mobilebert-uncased`) for sequence classification.
+   
+   ```python
+   model = pipeline.initialize_model()
+   ```
+
+5. **Optimizer and Scheduler Setup:**
+   - The optimizer (either `Adafactor` or `AdamW`) is initialized. The choice depends on the config. 
+     - **Adafactor** is often used when handling large models because it requires less memory.
+     - **AdamW** is a standard optimizer that applies weight decay to prevent overfitting.
+
+   The learning rate scheduler is initialized as well. The scheduler is responsible for adjusting the learning rate dynamically over the training period. A **linear scheduler** with a warmup phase is used here, which gradually increases the learning rate for a number of steps (defined by `warmup_steps`) and then decreases it linearly.
+
+   ```python
+   optimizer = self.get_optimizer()
+   scheduler = self.get_scheduler(optimizer, warmup_steps=config['warmup_steps'])
+   ```
+
+6. **Training Loop:**
+   - The `train()` method handles the core training logic. It runs over a number of epochs (`EPOCHS` defined in the config).
+   - For each batch in the dataset:
+     1. **Forward Pass**: The input data is fed into the model to compute predictions.
+     2. **Loss Calculation**: The model's predictions are compared to the actual labels using cross-entropy loss.
+     3. **Backward Pass**: The gradients are computed using backpropagation.
+     4. **Optimizer Step**: The optimizer updates the model's parameters using the computed gradients.
+     5. **Scheduler Step**: The learning rate is updated according to the current step in training.
+   
+   If mixed precision training is enabled (`use_amp`), the model performs forward and backward passes in mixed precision, reducing memory consumption and speeding up the training process.
+
+   ```python
+   results = pipeline.train(train_data, eval_data)
+   ```
+
+7. **Evaluation and Metrics Calculation:**
+   - After each epoch, the model is evaluated on the validation dataset using precision, recall, F1-score, and ROC-AUC. These metrics are calculated using the `evaluate()` method. Results are printed for each epoch to monitor progress.
+   
+   ```python
+   eval_metrics = pipeline.evaluate(eval_data)
+   ```
+
+8. **Model Saving:**
+   - After each epoch, the model's state is saved to the location specified in the configuration. Each model checkpoint includes the epoch number and version for easy tracking.
+
+   ```python
+   self.save_model(epoch)
+   ```
+
+### Optimizer's Role
+
+The **optimizer** is responsible for updating the model's parameters to minimize the loss function during training.
+
+- **AdamW**: This optimizer adds weight decay (regularization) to reduce overfitting. It is effective for general-purpose training and balances between the momentum of gradient updates and adjusting learning rates on the fly.
+  
+- **Adafactor**: Adafactor is a memory-efficient optimizer, particularly useful for models like MobileBERT. It adapts learning rates across dimensions, requiring less memory and improving scalability when working with large models or datasets.
+
+In both cases, the optimizers update the model’s weights by using gradients (computed during backpropagation) to take steps toward minimizing the loss function.
+
+### Scheduler's Role
+
+The **scheduler** adjusts the learning rate during training, ensuring smoother training and preventing overshooting of the optimal parameters.
+
+- **Warmup and Linear Decay Scheduler**: 
+   - **Warmup**: During the initial training phase, the learning rate starts low and gradually increases over a number of steps (defined by `warmup_steps`). This helps stabilize training during the early epochs when gradients might be large and noisy.
+   - **Linear Decay**: After the warmup phase, the learning rate decreases linearly throughout the remaining steps of training. This ensures that the model makes smaller adjustments as it converges, improving the fine-tuning process and achieving a more stable end result.
+
+### Detailed Methods
+
+#### `load_data()`
+- Reads the input data from a CSV file, splits it into training and validation sets, and tokenizes the SQL queries using the Hugging Face tokenizer.
+
+#### `initialize_model()`
+- Initializes the `google/mobilebert-uncased` model from Hugging Face or loads a fine-tuned model if specified.
+
+#### `get_optimizer()`
+- Instantiates the optimizer based on the config. It supports Adafactor and AdamW, and sets parameters such as learning rate and weight decay.
+
+#### `get_scheduler(optimizer, warmup_steps)`
+- Creates a learning rate scheduler that controls how the learning rate evolves over time. This is usually combined with the optimizer to improve training stability.
+
+#### `train()`
+- Contains the core training loop, including forward passes, loss computation, backward propagation, optimizer updates, and scheduler steps.
+
+#### `evaluate()`
+- Evaluates the model on the validation set using metrics like precision, recall, F1-score, and ROC-AUC.
+
+#### `save_model(epoch)`
+- Saves the model state at the end of each epoch for checkpointing.
+
+### Conclusion
+
+The execution flow and methods ensure that the model is trained efficiently, with optimizers and schedulers playing a crucial role in controlling how the model learns. The optimizer updates the model's weights, while the scheduler fine-tunes the learning rate dynamically to stabilize training. This combination helps achieve robust fine-tuning of the MobileBERT model for SQL injection detection.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
