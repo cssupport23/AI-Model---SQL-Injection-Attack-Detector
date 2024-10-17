@@ -2,6 +2,8 @@
 
 This project fine-tunes the `google/mobilebert-uncased` model from Hugging Face's Transformers library to detect SQL injection attacks. The fine-tuning process is customizable, supporting Nvidia's APEX for mixed precision training and leveraging optimizers like Adafactor or AdamW. The model is trained on a custom dataset and uses techniques such as dynamic padding and learning rate scheduling.
 
+This fine-tuned model, for detecting SQL injection attacks is now publicly available on [Hugging Face](https://huggingface.co/cssupport/mobilebert-sql-injection-detect). This model is optimized for identifying malicious SQL queries and can be used for a variety of security applications, such as web application firewalls, intrusion detection systems, and API security. Leveraging transfer learning from the `google/mobilebert-uncased` model, it has been further fine-tuned using a custom SQL injection dataset. You can easily integrate the model into your security pipeline for real-time detection.
+
 ## Features
 - Uses the **MobileBERT** model (`google/mobilebert-uncased`) for sequence classification.
 - Fine-tuning to detect SQL injection attacks using labeled data.
